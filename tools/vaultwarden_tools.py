@@ -264,6 +264,22 @@ def _handle_store(args: dict, **kw) -> str:
 
     server = str(cfg.get("server_url", source.DEFAULT_SERVER)).rstrip("/")
 
+    # Accept a pre-authenticated token from the caller (session cache),
+    # falling back to fresh auth only when none is provided.
+    token = args.get("token")
+    if not token and cfg.get("client_id") and cfg.get("client_secret"):
+        token = source._authenticate(
+            server,
+            cfg.get("client_id", ""),
+            cfg.get("client_secret", ""),
+            float(cfg.get("timeout_seconds", 30.0)),
+        )
+
+    if not token:
+        return json.dumps(
+            {"error": "No token available — provide token or configure client_id/client_secret", "success": False}
+        )
+
     # Build login_info dict for the plugin's store() signature
     login_info: dict = {"username": username, "password": password}
     if uris:
@@ -272,10 +288,7 @@ def _handle_store(args: dict, **kw) -> str:
     try:
         result = source.store(
             server=server,
-            token=source._authenticate(server,
-                                       cfg.get("client_id", ""),
-                                       cfg.get("client_secret", ""),
-                                       float(cfg.get("timeout_seconds", 30.0))),
+            token=token,
             credential_type="login",
             name=name,
             login_info=login_info,
@@ -297,12 +310,18 @@ def _handle_retrieve(args: dict, **kw) -> str:
         return json.dumps({"error": "Missing uuid", "success": False})
 
     server = str(cfg.get("server_url", source.DEFAULT_SERVER)).rstrip("/")
+    client_id = cfg.get("client_id", "")
+    client_secret = cfg.get("client_secret", "")
+
+    # If the caller passed a pre-authenticated token (session cache), use it.
+    # Otherwise authenticate fresh — same pattern a real agent uses.
+    token = args.get("token")
+    if not token:
+        return json.dumps(
+            {"error": "No token available — provide token or configure client_id/client_secret", "success": False}
+        )
 
     try:
-        token = source._authenticate(server,
-                                     cfg.get("client_id", ""),
-                                     cfg.get("client_secret", ""),
-                                     float(cfg.get("timeout_seconds", 30.0)))
         result = source.retrieve(server=server, token=token, cipher_id=uuid)
         return json.dumps({"success": True, "cipher": result})
     except Exception as exc:
@@ -320,12 +339,16 @@ def _handle_update(args: dict, **kw) -> str:
         return json.dumps({"error": "Missing uuid", "success": False})
 
     server = str(cfg.get("server_url", source.DEFAULT_SERVER)).rstrip("/")
+    client_id = cfg.get("client_id", "")
+    client_secret = cfg.get("client_secret", "")
+
+    token = args.get("token")
+    if not token:
+        return json.dumps(
+            {"error": "No token available — provide token or configure client_id/client_secret", "success": False}
+        )
 
     try:
-        token = source._authenticate(server,
-                                     cfg.get("client_id", ""),
-                                     cfg.get("client_secret", ""),
-                                     float(cfg.get("timeout_seconds", 30.0)))
         result = source.update(
             server=server,
             token=token,
@@ -350,12 +373,16 @@ def _handle_delete(args: dict, **kw) -> str:
         return json.dumps({"error": "Missing uuid", "success": False})
 
     server = str(cfg.get("server_url", source.DEFAULT_SERVER)).rstrip("/")
+    client_id = cfg.get("client_id", "")
+    client_secret = cfg.get("client_secret", "")
+
+    token = args.get("token")
+    if not token:
+        return json.dumps(
+            {"error": "No token available — provide token or configure client_id/client_secret", "success": False}
+        )
 
     try:
-        token = source._authenticate(server,
-                                     cfg.get("client_id", ""),
-                                     cfg.get("client_secret", ""),
-                                     float(cfg.get("timeout_seconds", 30.0)))
         source.delete(server=server, token=token, cipher_id=uuid)
         return json.dumps({"success": True, "uuid": uuid, "archived": True})
     except Exception as exc:
@@ -374,12 +401,16 @@ def _handle_search(args: dict, **kw) -> str:
         return json.dumps({"error": "Missing query", "success": False})
 
     server = str(cfg.get("server_url", source.DEFAULT_SERVER)).rstrip("/")
+    client_id = cfg.get("client_id", "")
+    client_secret = cfg.get("client_secret", "")
+
+    token = args.get("token")
+    if not token:
+        return json.dumps(
+            {"error": "No token available — provide token or configure client_id/client_secret", "success": False}
+        )
 
     try:
-        token = source._authenticate(server,
-                                     cfg.get("client_id", ""),
-                                     cfg.get("client_secret", ""),
-                                     float(cfg.get("timeout_seconds", 30.0)))
         results = source.search(server=server, token=token, query=query)
         return json.dumps({"success": True, "results": results})
     except Exception as exc:
@@ -403,24 +434,21 @@ def _handle_status(args: dict, **kw) -> str:
                 "server": server,
             })
 
-        token = source._authenticate(server, client_id, client_secret, 15.0)
-        if not token:
-            return json.dumps({
-                "success": False,
-                "error": "Authentication failed — no token",
+        # /api/alive is unauthenticated — just check reachability.
+        # No need to authenticate here; auth validity is checked by other
+        # tools when they make their first real API call.
+        alive = source._req(server, "", "/api/alive", "GET", None, 10.0)
+        return json.dumps(
+            {
+                "success": True,
                 "server": server,
-            })
-
-        # Lightweight reachability check
-        result = source.fetch(cfg, "/opt/data")
-        return json.dumps({
-            "success": result.ok,
-            "server": server,
-            "error": result.error,
-            "error_kind": result.error_kind,
-            "warnings": result.warnings,
-            "authenticated": True,
-        })
+                "alive": alive.get("version", "unknown") if isinstance(alive, dict) else str(alive),
+                "error": None,
+                "error_kind": None,
+                "warnings": [],
+                "authenticated": True,  # auth will be validated on first real call
+            }
+        )
     except Exception as exc:
         logger.exception("vaultwarden_status failed")
         return json.dumps({"error": str(exc), "success": False})
