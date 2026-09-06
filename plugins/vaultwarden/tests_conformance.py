@@ -1,6 +1,5 @@
-#!/usr/bin/env python3
 """Conformance tests for Vaultwarden Secret Source plugin v0.1.0.
-Uses unittest (no pip dependency). Run: python3 tests_conformance.py
+Run: python -m pytest plugins/vaultwarden/tests_conformance.py -v
 """
 
 import sys
@@ -71,23 +70,3 @@ class TestVaultwardenConformance:
     def test_collection_refs_property(self):
         assert callable(_strip_vw_prefix)
         assert callable(scope_collection)
-
-
-if __name__ == "__main__":
-    passed = 0
-    failed = 0
-    for name, method in sorted(TestVaultwardenConformance.__dict__.items()):
-        if name.startswith("_") or not callable(method):
-            continue
-        try:
-            method(None)
-            print(f"  PASS  {name}")
-            passed += 1
-        except AssertionError as e:
-            print(f"  FAIL  {name}: {e}")
-            failed += 1
-        except Exception as e:
-            print(f"  ERROR {name}: {type(e).__name__}: {e}")
-            failed += 1
-    print(f"\n{passed} passed, {failed} failed")
-    sys.exit(0 if failed == 0 else 1)
