@@ -1,0 +1,18 @@
+# Vaultwarden Secret Source Plugin for Hermes Agent
+# v0.1.0 — follows the SecretSource ABC contract (agent/secret_sources/base.py)
+
+name: vaultwarden
+version: 0.1.0
+description: >-
+  Pulls credentials from a Vaultwarden/Bitwarden-compatible server via its
+  REST API. Scoped by collection — never dumps the whole vault unless
+  explicitly configured.
+
+source: __init__.py
+
+# Default configuration (overridden by hermes secrets vaultwarden setup)
+server_url: https://vaultwarden.red-nas.local:30022
+token_env: VAULTWARDEN_TOKEN
+collection_id: ""
+collection_refs: []
+override_existing: false
